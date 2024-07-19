@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Registros de Solicitudes</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.3/font/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+  <div class="container mt-5">
+    <h2 class="display-4">Registros de Solicitudes</h2>
+    <div class="rendimiento-container"></div> 
+    <div class="row mb-3">
+      <div class="col-md-3">
+        <select class="form-control" id="filtroCriterio">
+          <option value="todos">Todos los campos</option>
+          <option value="responsable">Responsable</option>
+          <option value="estatus">Estatus</option>
+          <option value="solicitante">Solicitante</option>
+          <option value="fecha">Fecha</option>
+        </select>
+      </div>
+      <div class="col-md-9" id="contenedorFiltroValor">
+        <input type="text" class="form-control" id="filtroValor" placeholder="Buscar..." />
+      </div>
+    </div>
+
+    <div class="table-container fixed-header">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Responsable</th>
+            <th>Fecha</th>
+            <th>Solicitante</th>
+            <th>Estatus</th>
+          </tr>
+        </thead>
+        <tbody id="tablaSolicitudes"></tbody>
+      </table>
+    </div>
+
+    <div class="fixed-button">
+      <button id="botonCrear" class="btn btn-primary">Crear Nuevo Registro</button>
+    </div>
+  </div>
+
+  <script>
+    $(document).ready(function () {
+      const tablaSolicitudes = $("#tablaSolicitudes");
+      const filtroCriterio = $("#filtroCriterio");
+      const contenedorFiltroValor = $("#contenedorFiltroValor");
+
+      let solicitudesData = [];
+      const url = 'http://localhost:3000/obtener_solicitudes'; // URL de tu servidor Express
+
+      // Cargar datos de solicitudes
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          solicitudesData = data;
+
+          // Calcular y mostrar el rendimiento
+          const resueltos = solicitudesData.filter(solicitud => solicitud.estatus === "realizado").length;
+          const rechazados = solicitudesData.filter(solicitud => solicitud.estatus === "rechazado").length;
+          const pendientes = solicitudesData.filter(solicitud => solicitud.estatus === "pendiente").length;
+          const rendimiento = ((resueltos + rechazados) / (resueltos + pendientes + rechazados)) * 100;
+
+          const r = 255 - Math.round(2.55 * rendimiento);
+          const g = Math.round(2.55 * rendimiento);
+          const colorRGB = `rgb(${r}, ${g}, 0)`;
+
+          $(".rendimiento-container").html(`
+            <div class="rendimiento-box">
+              <div class="asuntos-resueltos" id="resueltos">${resueltos}</div>
+              <div><p>Asuntos Resueltos</p></div>
+            </div>
+            <div class="rendimiento-box">
+              <div class="asuntos-pendientes" id="pendientes">${pendientes}</div>
+              <div>Asuntos Pendientes</div>
+            </div>
+            <div class="rendimiento-box">
+              <div class="rendimiento-general" id="rendimiento" style="color: ${colorRGB}">${rendimiento.toFixed(2)}%</div>
+              <div>Rendimiento General</div>
+            </div>
+          `);
+
+          cargarSolicitudes(); // Cargar solicitudes iniciales
+
+          // Manejar cambios en el criterio de filtro
+          filtroCriterio.on("change", function () {
+            if (this.value === "estatus") {
+              contenedorFiltroValor.empty();
+              contenedorFiltroValor.append(`
+                <select class="form-control" id="filtroValor">
+                  <option value="">Todos los estatus</option> 
+                  <option value="realizado">Realizado</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="rechazado">Rechazado</option>
+                </select>
+              `);
+            } else if (this.value === "fecha") {
+              contenedorFiltroValor.empty();
+              contenedorFiltroValor.append(`
+                <input type="date" class="form-control" id="filtroValor" />
+              `);
+            } else {
+              contenedorFiltroValor.empty();
+              contenedorFiltroValor.append(`
+                <input type="text" class="form-control" id="filtroValor" placeholder="Buscar..." />
+              `);
+            }
+            cargarSolicitudes();
+          });
+
+          // Manejar eventos de filtro (keyup y change)
+          contenedorFiltroValor.on("keyup change", "#filtroValor", cargarSolicitudes);
+
+          // Función para cargar y filtrar las solicitudes
+          function cargarSolicitudes() {
+            const criterio = filtroCriterio.val();
+            const valorFiltro = $("#filtroValor").val();
+
+            let solicitudesAMostrar = solicitudesData;
+
+            if (criterio === "fecha" && valorFiltro) {
+              const fechaFiltro = new Date(valorFiltro);
+
+              solicitudesAMostrar = solicitudesData.filter((solicitud) => {
+                const fechaRegistro = new Date(solicitud.fecha);
+                return (
+                  (!valorFiltro || fechaRegistro.getFullYear() === fechaFiltro.getFullYear()) &&
+                  (!valorFiltro || fechaRegistro.getMonth() === fechaFiltro.getMonth()) &&
+                  (!valorFiltro || fechaRegistro.getDate() === fechaFiltro.getDate())
+                );
+              });
+            } else if (valorFiltro) {
+              solicitudesAMostrar = solicitudesData.filter((solicitud) => {
+                if (criterio === "todos") {
+                  return Object.values(solicitud).some((valor) =>
+                    String(valor).toLowerCase().includes(valorFiltro.toLowerCase())
+                  );
+                } else if (criterio === "estatus") {
+                  return valorFiltro === "" || solicitud.estatus === valorFiltro;
+                } else {
+                  return String(solicitud[criterio]).toLowerCase().includes(valorFiltro.toLowerCase());
+                }
+              });
+            }
+
+            tablaSolicitudes.empty();
+            solicitudesAMostrar.forEach((solicitud) => {
+              let icono = '';
+              if (solicitud.estatus === 'realizado') {
+                icono = '<i class="bi bi-check-circle-fill text-success"></i>';
+              } else if (solicitud.estatus === 'pendiente') {
+                icono = '<i class="bi bi-circle-fill text-warning"></i>';
+              } else if (solicitud.estatus === 'rechazado') {
+                icono = '<i class="bi bi-x-circle-fill text-danger"></i>';
+              }
+
+              const fila = `<tr>
+                <td>${solicitud.id}</td>
+                <td>${solicitud.responsable}</td>
+                <td>${solicitud.fecha}</td>
+                <td>${solicitud.solicitante}</td>
+                <td>${icono} </td>
+              </tr>`;
+              tablaSolicitudes.append(fila);
+            });
+          }
+        })
+        .catch(error => {
+          console.error("Error al cargar datos:", error);
+        });
+    });
+  </script>
+</body>
+</html>
